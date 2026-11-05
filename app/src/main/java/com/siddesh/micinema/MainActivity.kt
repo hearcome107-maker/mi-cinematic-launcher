@@ -40,7 +40,7 @@ class MainActivity : Activity() {
 
         val clock = TextView(this).apply {
             text = SimpleDateFormat("h:mm", Locale.getDefault()).format(Date())
-            textSize =  sixty
+            textSize =  60f
             setTextColor(Color.WHITE)
             typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
         }
