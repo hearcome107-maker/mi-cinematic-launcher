@@ -6,6 +6,12 @@ import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.view.Gravity
@@ -50,7 +56,7 @@ class MainActivity : Activity() {
     }
 
     private fun shell() {
-        root=LinearLayout(this).apply { orientation=1; setPadding(42,22,42,24); background=GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(bg,Color.rgb(20,27,43),Color.rgb(8,11,18))) }
+        root=LinearLayout(this).apply { orientation=1; setPadding(42,22,42,24); background=wallpaperBackground() }
         val top=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL }
         top.addView(text("MI  CINEMATIC",19f,Color.WHITE,true),LinearLayout.LayoutParams(0,-2,1f))
         top.addView(action("◉  $profile") { profiles() })
@@ -143,8 +149,66 @@ class MainActivity : Activity() {
 
     private fun settings() {
         heading("Settings","Personalise your cinema")
-        listOf("Profiles" to { profiles() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Wallpaper settings" to { open("android.settings.DISPLAY_SETTINGS") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
+        listOf("Profiles" to { profiles() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
             val b=action(item.first,item.second); val lp=LinearLayout.LayoutParams(-1,-2); lp.bottomMargin=9; content.addView(b,lp)
+        }
+    }
+
+
+    private fun wallpaperBackground(): Drawable {
+        val saved = prefs.getString("wallpaper_uri", null)
+        if (saved != null) {
+            try {
+                val bitmap = contentResolver.openInputStream(Uri.parse(saved))?.use { BitmapFactory.decodeStream(it) }
+                if (bitmap != null) {
+                    val image = BitmapDrawable(resources, bitmap).apply { gravity = Gravity.FILL }
+                    return LayerDrawable(arrayOf(image, ColorDrawable(Color.argb(145, 5, 8, 14))))
+                }
+            } catch (_: Exception) { prefs.edit().remove("wallpaper_uri").apply() }
+        }
+        return GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(bg,Color.rgb(20,27,43),Color.rgb(8,11,18)))
+    }
+
+    private fun chooseWallpaper() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try { startActivityForResult(intent, 410) }
+        catch (_: Exception) { Toast.makeText(this, "Image picker is not available on this TV.", Toast.LENGTH_LONG).show() }
+    }
+
+    private fun previewWallpaper() {
+        val saved = prefs.getString("wallpaper_uri", null)
+        if (saved == null) {
+            Toast.makeText(this, "Choose a wallpaper first.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val image = ImageView(this).apply {
+            setImageURI(Uri.parse(saved))
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            adjustViewBounds = true
+            minimumHeight = 260
+        }
+        AlertDialog.Builder(this).setTitle("Current wallpaper").setView(image)
+            .setPositiveButton("Done", null).show()
+    }
+
+    @Deprecated("Deprecated by Android, retained for Android 9 TV compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 410 && resultCode == RESULT_OK) {
+            val uri = data?.data ?: return
+            try {
+                contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                prefs.edit().putString("wallpaper_uri", uri.toString()).apply()
+                shell()
+                show("Home")
+                Toast.makeText(this, "Wallpaper applied.", Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) {
+                Toast.makeText(this, "Could not save this image. Try another image.", Toast.LENGTH_LONG).show()
+            }
         }
     }
 
