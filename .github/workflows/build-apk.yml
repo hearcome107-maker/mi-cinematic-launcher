@@ -3,7 +3,7 @@ name: Build Mi Cinematic Launcher APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ '**' ]
   workflow_dispatch:
 
 permissions:
