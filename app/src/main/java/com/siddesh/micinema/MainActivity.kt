@@ -92,23 +92,41 @@ class MainActivity : Activity() {
     }
 
     private fun home() {
-        content.addView(text(SimpleDateFormat("h:mm",Locale.getDefault()).format(Date()),72f))
-        content.addView(text(SimpleDateFormat("EEEE, d MMMM",Locale.getDefault()).format(Date()).uppercase(Locale.getDefault()),16f,muted))
-        content.addView(View(this),LinearLayout.LayoutParams(1,25))
-        content.addView(text("YOUR CINEMA. YOUR HOME.",18f,Color.WHITE,true))
+        val clockWrap=LinearLayout(this).apply {
+            orientation=1
+            gravity=when(prefs.getString("clock_position","LEFT")) { "CENTER" -> Gravity.CENTER; "RIGHT" -> Gravity.RIGHT; else -> Gravity.LEFT }
+            setPadding(18,12,18,12)
+            background=GradientDrawable().apply { setColor(Color.argb(155,22,27,38)); cornerRadius=28f; setStroke(1,Color.argb(90,255,255,255)) }
+        }
+        clockWrap.addView(text(SimpleDateFormat("h:mm a",Locale.getDefault()).format(Date()),38f,Color.WHITE,true))
+        clockWrap.addView(text(SimpleDateFormat("EEE, d MMM",Locale.getDefault()).format(Date()),14f,muted))
+        content.addView(clockWrap,LinearLayout.LayoutParams(-1,-2))
+        content.addView(View(this),LinearLayout.LayoutParams(1,20))
+        content.addView(text("YOUR CINEMA. YOUR HOME.",20f,Color.WHITE,true))
         content.addView(text("Welcome back, $profile",15f,muted))
-        content.addView(View(this),LinearLayout.LayoutParams(1,25))
+        content.addView(View(this),LinearLayout.LayoutParams(1,20))
+        content.addView(text("YOUR FAVOURITES",14f,muted,true))
+        val favRow=LinearLayout(this)
+        val favs=prefs.getStringSet("favorites_$profile", emptySet()) ?: emptySet()
+        favs.forEach { pkg ->
+            val label=try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg,0)).toString() } catch (_:Exception) { pkg }
+            val v=appTile(label,pkg,"▣") { launch(pkg,label) }
+            val lp=LinearLayout.LayoutParams(150,105); lp.marginEnd=12; favRow.addView(v,lp)
+        }
+        if(favs.isEmpty()) favRow.addView(text("Open Apps and long-press an app to add it here.",15f,muted))
+        content.addView(favRow)
+        content.addView(View(this),LinearLayout.LayoutParams(1,18))
         content.addView(text("QUICK ACCESS",14f,muted,true))
         val row=LinearLayout(this)
         listOf(Triple("YouTube","com.google.android.youtube.tv","▶"),Triple("Netflix","com.netflix.ninja","N"),Triple("Prime Video","com.amazon.amazonvideo.livingroom","P"),Triple("Settings","com.android.tv.settings","⚙")).forEach { item ->
             val tile=appTile(item.first,item.second,item.third) { if(item.first=="Settings") systemSettings() else launch(item.second,item.first) }
-            val lp=LinearLayout.LayoutParams(175,112); lp.marginEnd=14; row.addView(tile,lp)
+            val lp=LinearLayout.LayoutParams(155,105); lp.marginEnd=12; row.addView(tile,lp)
         }
         content.addView(row)
-        content.addView(View(this),LinearLayout.LayoutParams(1,24))
-        val music=LinearLayout(this).apply { orientation=0; gravity=Gravity.CENTER_VERTICAL; setPadding(18,16,18,16); background=shape(panel) }
+        content.addView(View(this),LinearLayout.LayoutParams(1,18))
+        val music=LinearLayout(this).apply { orientation=0; gravity=Gravity.CENTER_VERTICAL; setPadding(18,14,18,14); background=shape(panel); isFocusable=true; isClickable=true; setOnClickListener { musicPlayer() } }
         music.addView(text("♫   MUSIC",18f,Color.WHITE,true),LinearLayout.LayoutParams(0,-2,1f))
-        music.addView(text("No active media session",14f,muted)); content.addView(music)
+        music.addView(text("Open music hub  ›",14f,muted)); content.addView(music)
     }
 
     private fun tile(name:String, glyph:String, run:()->Unit)=LinearLayout(this).apply {
@@ -120,19 +138,31 @@ class MainActivity : Activity() {
 
     private fun apps() {
         heading("All applications","Installed apps available to launch")
+        val search=EditText(this).apply { hint="Search apps"; textSize=17f; setSingleLine(true); setTextColor(Color.WHITE); setHintTextColor(muted); background=shape(panel); setPadding(14,10,14,10) }
+        content.addView(search,LinearLayout.LayoutParams(-1,-2))
         val scroll=ScrollView(this); val list=LinearLayout(this).apply { orientation=1 }
         val found=packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER),0)
             .ifEmpty { packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),0) }
             .distinctBy { it.activityInfo.packageName }.sortedBy { it.loadLabel(packageManager).toString() }
-        found.chunked(4).forEach { group ->
-            val row=LinearLayout(this)
-            group.forEach { info ->
-                val name=info.loadLabel(packageManager).toString()
-                val v=appTile(name,info.activityInfo.packageName,"▣") { launch(info.activityInfo.packageName,name) }
-                val lp=LinearLayout.LayoutParams(0,112,1f); lp.marginEnd=12; lp.bottomMargin=12; row.addView(v,lp)
-            }; list.addView(row)
+        fun renderApps(query:String) {
+            list.removeAllViews()
+            val filtered=found.filter { it.loadLabel(packageManager).toString().contains(query,true) }
+            filtered.chunked(4).forEach { group ->
+                val row=LinearLayout(this)
+                group.forEach { info ->
+                    val name=info.loadLabel(packageManager).toString()
+                    val v=appTile(name,info.activityInfo.packageName,"▣") { launch(info.activityInfo.packageName,name) }
+                    val lp=LinearLayout.LayoutParams(0,112,1f); lp.marginEnd=12; lp.bottomMargin=12; row.addView(v,lp)
+                }; list.addView(row)
+            }
+            if(filtered.isEmpty()) list.addView(text("No matching apps.",18f,muted))
         }
-        if(found.isEmpty()) list.addView(text("No launchable apps found.",18f,muted))
+        renderApps("")
+        search.addTextChangedListener(object: android.text.TextWatcher {
+            override fun beforeTextChanged(s:CharSequence?,start:Int,count:Int,after:Int) {}
+            override fun onTextChanged(s:CharSequence?,start:Int,before:Int,count:Int) { renderApps(s?.toString() ?: "") }
+            override fun afterTextChanged(s:android.text.Editable?) {}
+        })
         scroll.addView(list); content.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
     }
 
@@ -150,6 +180,36 @@ class MainActivity : Activity() {
         addView(text(name,15f,Color.WHITE,true))
         setOnFocusChangeListener { v,f -> v.background=shape(if(f)Color.rgb(65,82,115) else panel); v.scaleX=if(f)1.05f else 1f; v.scaleY=if(f)1.05f else 1f }
         setOnClickListener { run() }
+        setOnLongClickListener {
+            val current=(prefs.getStringSet("favorites_$profile", emptySet()) ?: emptySet()).toMutableSet()
+            if(current.contains(pkg)) current.remove(pkg) else current.add(pkg)
+            prefs.edit().putStringSet("favorites_$profile",current).apply()
+            Toast.makeText(this,if(current.contains(pkg)) "Added to favourites" else "Removed from favourites",Toast.LENGTH_SHORT).show()
+            if(page=="Home") show("Home")
+            true
+        }
+    }
+
+    private fun clockPosition() {
+        val options=arrayOf("Left","Center","Right")
+        AlertDialog.Builder(this).setTitle("Clock position").setItems(options) { _,i ->
+            prefs.edit().putString("clock_position",options[i].uppercase(Locale.ROOT)).apply()
+            shell(); show("Home")
+        }.show()
+    }
+
+    private fun musicPlayer() {
+        content.removeAllViews()
+        heading("Music","Your music apps and playback")
+        content.addView(text("Open a music app to play audio. Track details and playback controls are provided only when that app exposes an Android media session.",15f,muted))
+        val candidates=listOf("com.spotify.tv.android" to "Spotify","com.spotify.music" to "Spotify","com.google.android.youtube.tv" to "YouTube","com.amazon.mp3" to "Amazon Music")
+        candidates.forEach { (pkg,label) ->
+            if(packageManager.getLaunchIntentForPackage(pkg)!=null) {
+                val b=action("♫  Open $label") { launch(pkg,label) }
+                val lp=LinearLayout.LayoutParams(-1,-2); lp.bottomMargin=10; content.addView(b,lp)
+            }
+        }
+        content.addView(action("Back to Home") { show("Home") })
     }
 
     private fun customIconSettings() {
@@ -193,7 +253,7 @@ class MainActivity : Activity() {
 
     private fun settings() {
         heading("Settings","Personalise your cinema")
-        listOf("Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
+        listOf("Profiles" to { profiles() },("Clock position: " + (prefs.getString("clock_position","LEFT") ?: "LEFT")) to { clockPosition() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
             val b=action(item.first,item.second); val lp=LinearLayout.LayoutParams(-1,-2); lp.bottomMargin=9; content.addView(b,lp)
         }
     }
