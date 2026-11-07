@@ -12,6 +12,7 @@
     <application
         android:theme="@android:style/Theme.Material.NoActionBar"
         android:label="Mi Cinematic Launcher"
+        android:icon="@drawable/ic_launcher"
         android:usesCleartextTraffic="false">
 
         <activity
