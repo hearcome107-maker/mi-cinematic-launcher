@@ -42,7 +42,8 @@ class MainActivity : Activity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         shell()
-        show("Home")
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        if (prefs.getString("daily_pick_date", "") != today) dailyPicks() else show("Home")
     }
 
     private fun shape(c: Int) = GradientDrawable().apply { setColor(c); cornerRadius = 22f }
@@ -83,6 +84,7 @@ class MainActivity : Activity() {
             "Home" -> home()
             "Apps" -> apps()
             "Settings" -> settings()
+            "Daily Picks" -> dailyPicks()
             "Movies","Series" -> media(p)
         }
     }
@@ -99,6 +101,8 @@ class MainActivity : Activity() {
         content.addView(text("YOUR CINEMA. YOUR HOME.",18f,Color.WHITE,true))
         content.addView(text("Welcome back, $profile",15f,muted))
         content.addView(View(this),LinearLayout.LayoutParams(1,25))
+        content.addView(action("✦  Today's wallpaper picks") { dailyPicks() })
+        content.addView(View(this),LinearLayout.LayoutParams(1,16))
         content.addView(text("QUICK ACCESS",14f,muted,true))
         val row=LinearLayout(this)
         listOf(Triple("YouTube","com.google.android.youtube.tv","▶"),Triple("Netflix","com.netflix.ninja","N"),Triple("Prime Video","com.amazon.amazonvideo.livingroom","P"),Triple("Settings","com.android.tv.settings","⚙")).forEach { item ->
@@ -194,11 +198,67 @@ class MainActivity : Activity() {
 
     private fun settings() {
         heading("Settings","Personalise your cinema")
-        listOf("Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
+        listOf("Daily Wallpaper Picks" to { dailyPicks() },"Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
             val b=action(item.first,item.second); val lp=LinearLayout.LayoutParams(-1,-2); lp.bottomMargin=9; content.addView(b,lp)
         }
     }
 
+
+    private fun dailyPicks() {
+        content.removeAllViews()
+        heading("Good morning, $profile", "Choose one of today's three cinematic wallpapers")
+        val scroll = ScrollView(this)
+        val list = LinearLayout(this).apply { orientation = 1 }
+        val choices = listOf(
+            Triple("MOVIE MOOD", "Superheroes, epic worlds and your favourite films", 1),
+            Triple("MUSIC MOOD", "Romance, music nights and cinematic colour", 2),
+            Triple("DAILY DISCOVERY", "Cars, beautiful places and new stories", 3)
+        )
+        choices.forEach { item ->
+            val card = LinearLayout(this).apply {
+                orientation = 1
+                gravity = Gravity.CENTER
+                setPadding(20, 22, 20, 22)
+                background = dailyCardBackground(item.third)
+                isFocusable = true
+                isClickable = true
+                setOnFocusChangeListener { v, f -> v.scaleX = if (f) 1.025f else 1f; v.scaleY = if (f) 1.025f else 1f }
+                setOnClickListener { applyDailyWallpaper(item.third) }
+            }
+            val symbol = when(item.third) { 1 -> "✦"; 2 -> "♫"; else -> "◉" }
+            card.addView(text(symbol, 54f, Color.WHITE, true))
+            card.addView(text(item.first, 20f, Color.WHITE, true))
+            card.addView(text(item.second, 15f, Color.WHITE))
+            card.addView(text("SELECT FOR TODAY  →", 13f, Color.WHITE, true))
+            val lp = LinearLayout.LayoutParams(-1, 170)
+            lp.bottomMargin = 14
+            list.addView(card, lp)
+        }
+        scroll.addView(list)
+        content.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        content.addView(action("Skip for now — keep current wallpaper") {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            prefs.edit().putString("daily_pick_date", today).apply()
+            show("Home")
+        })
+    }
+
+    private fun dailyCardBackground(choice: Int): Drawable {
+        val colors = when(choice) {
+            1 -> intArrayOf(Color.rgb(25,35,70), Color.rgb(92,42,66), Color.rgb(12,15,30))
+            2 -> intArrayOf(Color.rgb(74,30,63), Color.rgb(28,36,67), Color.rgb(10,12,24))
+            else -> intArrayOf(Color.rgb(12,62,77), Color.rgb(39,48,72), Color.rgb(12,14,24))
+        }
+        return GradientDrawable(GradientDrawable.Orientation.TL_BR, colors).apply { cornerRadius = 26f }
+    }
+
+    private fun applyDailyWallpaper(choice: Int) {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        prefs.edit().putInt("daily_wallpaper_choice", choice).putString("daily_pick_date", today).apply()
+        shell()
+        show("Home")
+        Toast.makeText(this, "Today's wallpaper selected.", Toast.LENGTH_SHORT).show()
+    }
 
     private fun wallpaperBackground(): Drawable {
         val saved = prefs.getString("wallpaper_uri", null)
@@ -211,6 +271,8 @@ class MainActivity : Activity() {
                 }
             } catch (_: Exception) { prefs.edit().remove("wallpaper_uri").apply() }
         }
+        val daily = prefs.getInt("daily_wallpaper_choice", 0)
+        if (daily in 1..3) return dailyCardBackground(daily)
         return GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(bg,Color.rgb(20,27,43),Color.rgb(8,11,18)))
     }
 
