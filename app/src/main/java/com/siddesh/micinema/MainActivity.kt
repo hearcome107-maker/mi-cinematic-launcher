@@ -33,6 +33,7 @@ class MainActivity : Activity() {
     private lateinit var nav: LinearLayout
     private lateinit var content: LinearLayout
     private var page = "Home"
+    private var iconTargetPackage: String? = null
     private val tabs = listOf("Home", "Movies", "Series", "YouTube", "Apps", "Settings")
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,7 +102,7 @@ class MainActivity : Activity() {
         content.addView(text("QUICK ACCESS",14f,muted,true))
         val row=LinearLayout(this)
         listOf(Triple("YouTube","com.google.android.youtube.tv","▶"),Triple("Netflix","com.netflix.ninja","N"),Triple("Prime Video","com.amazon.amazonvideo.livingroom","P"),Triple("Settings","com.android.tv.settings","⚙")).forEach { item ->
-            val tile=tile(item.first,item.third) { if(item.first=="Settings") systemSettings() else launch(item.second,item.first) }
+            val tile=appTile(item.first,item.second,item.third) { if(item.first=="Settings") systemSettings() else launch(item.second,item.first) }
             val lp=LinearLayout.LayoutParams(175,112); lp.marginEnd=14; row.addView(tile,lp)
         }
         content.addView(row)
@@ -128,7 +129,7 @@ class MainActivity : Activity() {
             val row=LinearLayout(this)
             group.forEach { info ->
                 val name=info.loadLabel(packageManager).toString()
-                val v=tile(name,"▣") { launch(info.activityInfo.packageName,name) }
+                val v=appTile(name,info.activityInfo.packageName,"▣") { launch(info.activityInfo.packageName,name) }
                 val lp=LinearLayout.LayoutParams(0,112,1f); lp.marginEnd=12; lp.bottomMargin=12; row.addView(v,lp)
             }; list.addView(row)
         }
@@ -136,6 +137,50 @@ class MainActivity : Activity() {
         scroll.addView(list); content.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
     }
 
+    private fun appTile(name:String, pkg:String, fallback:String, run:()->Unit)=LinearLayout(this).apply {
+        orientation=1; gravity=Gravity.CENTER; background=shape(panel); isFocusable=true; isClickable=true
+        val iconView=ImageView(this@MainActivity).apply {
+            val saved=prefs.getString("icon_$pkg",null)
+            var loaded=false
+            if(saved!=null) try { setImageURI(Uri.parse(saved)); loaded=drawable!=null } catch (_:Exception) {}
+            if(!loaded) try { setImageDrawable(packageManager.getApplicationIcon(pkg)); loaded=true } catch (_:Exception) {}
+            scaleType=ImageView.ScaleType.FIT_CENTER
+            if(!loaded) contentDescription=fallback
+        }
+        addView(iconView,LinearLayout.LayoutParams(54,54))
+        addView(text(name,15f,Color.WHITE,true))
+        setOnFocusChangeListener { v,f -> v.background=shape(if(f)Color.rgb(65,82,115) else panel); v.scaleX=if(f)1.05f else 1f; v.scaleY=if(f)1.05f else 1f }
+        setOnClickListener { run() }
+    }
+
+    private fun customIconSettings() {
+        content.removeAllViews()
+        heading("Custom app icons","Choose an image saved on your TV for any installed app")
+        content.addView(text("Select an app, then choose an image from Downloads, USB storage or your TV file manager.",15f,muted))
+        val scroll=ScrollView(this)
+        val list=LinearLayout(this).apply { orientation=1 }
+        val found=packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LEANBACK_LAUNCHER),0)
+            .ifEmpty { packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER),0) }
+            .distinctBy { it.activityInfo.packageName }.sortedBy { it.loadLabel(packageManager).toString() }
+        found.forEach { info ->
+            val pkg=info.activityInfo.packageName
+            val name=info.loadLabel(packageManager).toString()
+            val row=LinearLayout(this).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(8,7,8,7) }
+            row.addView(text(name,17f,Color.WHITE,true),LinearLayout.LayoutParams(0,-2,1f))
+            row.addView(action("Choose image") { chooseAppIcon(pkg) })
+            if(prefs.contains("icon_$pkg")) row.addView(action("Reset") { prefs.edit().remove("icon_$pkg").apply(); customIconSettings() })
+            list.addView(row)
+        }
+        scroll.addView(list)
+        content.addView(scroll,LinearLayout.LayoutParams(-1,0,1f))
+        content.addView(action("Back to Settings") { show("Settings") })
+    }
+
+    private fun chooseAppIcon(pkg:String) {
+        iconTargetPackage=pkg
+        val intent=Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type="image/*"; addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) }
+        try { startActivityForResult(intent,411) } catch (_:Exception) { Toast.makeText(this,"No image picker is available on this TV.",Toast.LENGTH_LONG).show() }
+    }
     private fun media(type:String) {
         heading(type,"Your $type library")
         content.addView(action("⌕  Search $type") {
@@ -149,7 +194,7 @@ class MainActivity : Activity() {
 
     private fun settings() {
         heading("Settings","Personalise your cinema")
-        listOf("Profiles" to { profiles() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
+        listOf("Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
             val b=action(item.first,item.second); val lp=LinearLayout.LayoutParams(-1,-2); lp.bottomMargin=9; content.addView(b,lp)
         }
     }
@@ -209,6 +254,17 @@ class MainActivity : Activity() {
             } catch (_: Exception) {
                 Toast.makeText(this, "Could not save this image. Try another image.", Toast.LENGTH_LONG).show()
             }
+        }
+        if (requestCode == 411 && resultCode == RESULT_OK) {
+            val uri=data?.data ?: return
+            val pkg=iconTargetPackage ?: return
+            try {
+                try { contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_:Exception) {}
+                prefs.edit().putString("icon_$pkg",uri.toString()).apply()
+                iconTargetPackage=null
+                customIconSettings()
+                Toast.makeText(this,"Custom app icon applied.",Toast.LENGTH_SHORT).show()
+            } catch (_:Exception) { Toast.makeText(this,"Could not apply that image. Try another file.",Toast.LENGTH_LONG).show() }
         }
     }
 
