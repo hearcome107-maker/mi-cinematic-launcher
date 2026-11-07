@@ -237,7 +237,7 @@ class MainActivity : Activity() {
                 setStroke(1, Color.argb(105, 255, 255, 255))
             }
         }
-        fun control(label: String, callback: () -> Unit, weight: Float = 0.8f) {
+        fun control(label: String, weight: Float = 0.8f, callback: () -> Unit) {
             val button = action(label, callback)
             val lp = LinearLayout.LayoutParams(0, 58, weight)
             lp.marginEnd = 6
