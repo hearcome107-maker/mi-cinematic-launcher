@@ -34,7 +34,7 @@ class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private var page = "Home"
     private var iconTargetPackage: String? = null
-    private val tabs = listOf("Home", "Movies", "Series", "YouTube", "Apps", "Settings")
+    private val tabs = listOf("Home", "YouTube", "Apps", "Settings")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -83,7 +83,6 @@ class MainActivity : Activity() {
             "Home" -> home()
             "Apps" -> apps()
             "Settings" -> settings()
-            "Movies","Series" -> media(p)
         }
     }
 
