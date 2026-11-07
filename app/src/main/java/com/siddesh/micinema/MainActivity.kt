@@ -159,32 +159,130 @@ class MainActivity : Activity() {
 
     private fun musicPlayer() {
         content.removeAllViews()
-        heading("Now Playing", "Live music")
+        heading("Now Playing", "Your music • live queue")
         val manager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
         val controller = try { manager.getActiveSessions(ComponentName(this, MusicAccessService::class.java)).firstOrNull() } catch (e: Exception) { null }
         if (controller == null) {
-            content.addView(text("Enable music access to display the current song and queue.", 17f, muted))
+            content.addView(text("Allow Mi Cinematic Launcher to read music notifications to show the song, album art and queue.", 17f, muted))
             content.addView(action("Enable music access") { startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) })
             content.addView(action("Back to Home") { show("Home") })
             return
         }
+
         val meta = controller.metadata
         val title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Unknown track"
         val artist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "Unknown artist"
-        val art = meta?.getBitmap(MediaMetadata.METADATA_KEY_ART) ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
-        val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; if (art != null) setImageBitmap(art) }
-        content.addView(image, LinearLayout.LayoutParams(260, 200))
-        content.addView(text(title, 24f, Color.WHITE, true))
-        content.addView(text(artist, 17f, muted))
-        content.addView(action("Previous") { controller.transportControls.skipToPrevious(); musicPlayer() })
-        content.addView(action("Play / Pause") { if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) controller.transportControls.pause() else controller.transportControls.play() })
-        content.addView(action("Next") { controller.transportControls.skipToNext(); musicPlayer() })
-        content.addView(text("UP NEXT", 14f, muted, true))
+        val album = meta?.getString(MediaMetadata.METADATA_KEY_ALBUM) ?: ""
+        val currentArt = meta?.getBitmap(MediaMetadata.METADATA_KEY_ART)
+            ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
         val queue = controller.queue ?: emptyList()
-        queue.take(8).forEach { item -> content.addView(text(item.description.title?.toString() ?: "Track", 15f, Color.WHITE)) }
-        if (queue.isEmpty()) content.addView(text("The music app does not share its queue.", 14f, muted))
-        content.addView(action("Back to Home") { show("Home") })
+        val currentId = controller.playbackState?.activeQueueItemId ?: -1L
+        val ordered = queue.toMutableList()
+        val currentIndex = ordered.indexOfFirst { it.queueId == currentId }
+        if (currentIndex < 0) ordered.add(0, android.media.session.MediaSession.QueueItem(
+            android.media.MediaDescription.Builder().setTitle(title).setSubtitle(artist).setIconBitmap(currentArt).build(), -999L
+        ))
+
+        val carouselScroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false }
+        val carousel = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(8, 8, 8, 16) }
+        ordered.take(12).forEachIndexed { index, item ->
+            val desc = item.description
+            val isCurrent = item.queueId == currentId || (currentIndex < 0 && index == 0)
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(10, 10, 10, 12)
+                background = GradientDrawable().apply {
+                    setColor(if (isCurrent) Color.argb(220, 57, 48, 43) else Color.argb(150, 35, 39, 48))
+                    cornerRadius = 22f
+                    setStroke(if (isCurrent) 2 else 1, Color.argb(if (isCurrent) 210 else 90, 255, 255, 255))
+                }
+                isFocusable = true
+                isClickable = true
+                setOnClickListener {
+                    if (item.queueId != -999L) controller.transportControls.skipToQueueItem(item.queueId)
+                }
+            }
+            val art = if (isCurrent) currentArt else desc.iconBitmap
+            val cover = ImageView(this).apply {
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                if (art != null) setImageBitmap(art)
+                else setImageDrawable(GradientDrawable().apply { setColor(Color.rgb(65, 53, 47)); cornerRadius = 18f })
+            }
+            card.addView(cover, LinearLayout.LayoutParams(if (isCurrent) 218 else 176, if (isCurrent) 190 else 154))
+            card.addView(text(desc.title?.toString() ?: "Track", if (isCurrent) 19f else 16f, Color.WHITE, true))
+            card.addView(text(desc.subtitle?.toString() ?: if (isCurrent) artist else "", 13f, muted))
+            val lp = LinearLayout.LayoutParams(if (isCurrent) 242 else 198, -2)
+            lp.marginEnd = 12
+            carousel.addView(card, lp)
+        }
+        if (ordered.isEmpty()) {
+            val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(12,12,12,12); background = shape(panel) }
+            val cover = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; if (currentArt != null) setImageBitmap(currentArt) }
+            card.addView(cover, LinearLayout.LayoutParams(250, 185))
+            card.addView(text(title, 20f, Color.WHITE, true))
+            card.addView(text(artist, 15f, muted))
+            carousel.addView(card)
+        }
+        carouselScroll.addView(carousel)
+        content.addView(carouselScroll, LinearLayout.LayoutParams(-1, 0, 1.0f))
+
+        val controlBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(12, 12, 12, 12)
+            background = GradientDrawable().apply {
+                setColor(Color.argb(185, 37, 32, 34))
+                cornerRadius = 34f
+                setStroke(1, Color.argb(105, 255, 255, 255))
+            }
+        }
+        fun control(label: String, callback: () -> Unit, weight: Float = 0.8f) {
+            val button = action(label, callback)
+            val lp = LinearLayout.LayoutParams(0, 58, weight)
+            lp.marginEnd = 6
+            controlBar.addView(button, lp)
+        }
+        control("◀◀") { controller.transportControls.skipToPrevious(); content.postDelayed({ musicPlayer() }, 350) }
+        control(if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) "Ⅱ" else "▶") {
+            if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) controller.transportControls.pause()
+            else controller.transportControls.play()
+            content.postDelayed({ musicPlayer() }, 250)
+        }
+        control("▶▶") { controller.transportControls.skipToNext(); content.postDelayed({ musicPlayer() }, 350) }
+        val now = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(8, 6, 8, 6); background = shape(Color.argb(175, 15, 17, 23)) }
+        val thumb = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; if (currentArt != null) setImageBitmap(currentArt) }
+        now.addView(thumb, LinearLayout.LayoutParams(52, 52))
+        val labels = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 0, 4, 0) }
+        labels.addView(text(title, 14f, Color.WHITE, true))
+        labels.addView(text(artist, 12f, muted))
+        now.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
+        val nowLp = LinearLayout.LayoutParams(0, -2, 2.2f)
+        nowLp.marginEnd = 6
+        controlBar.addView(now, nowLp)
+        control("☷") { showMusicQueue(controller) }
+        control("⌂") { show("Home") }
+        content.addView(controlBar, LinearLayout.LayoutParams(-1, -2))
+        if (album.isNotBlank()) content.addView(text(album, 12f, muted))
     }
+
+    private fun showMusicQueue(controller: android.media.session.MediaController) {
+        content.removeAllViews()
+        heading("Playing queue", "Songs shared by your current music app")
+        val queue = controller.queue ?: emptyList()
+        if (queue.isEmpty()) content.addView(text("This music app does not share its queue.", 16f, muted))
+        queue.forEach { item ->
+            val row = action(item.description.title?.toString() ?: "Track") {
+                controller.transportControls.skipToQueueItem(item.queueId)
+                content.postDelayed({ musicPlayer() }, 300)
+            }
+            val lp = LinearLayout.LayoutParams(-1, -2)
+            lp.bottomMargin = 8
+            content.addView(row, lp)
+        }
+        content.addView(action("Back to player") { musicPlayer() })
+    }
+
     private fun customIconSettings() {
         content.removeAllViews()
         heading("Custom app icons","Choose an image saved on your TV for any installed app")
