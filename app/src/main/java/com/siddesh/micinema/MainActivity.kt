@@ -3,6 +3,10 @@ package com.siddesh.micinema
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.ComponentName
+import android.media.MediaMetadata
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -152,6 +156,35 @@ class MainActivity : Activity() {
         setOnClickListener { run() }
     }
 
+
+    private fun musicPlayer() {
+        content.removeAllViews()
+        heading("Now Playing", "Live music")
+        val manager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
+        val controller = try { manager.getActiveSessions(ComponentName(this, MusicAccessService::class.java)).firstOrNull() } catch (e: Exception) { null }
+        if (controller == null) {
+            content.addView(text("Enable music access to display the current song and queue.", 17f, muted))
+            content.addView(action("Enable music access") { startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) })
+            content.addView(action("Back to Home") { show("Home") })
+            return
+        }
+        val meta = controller.metadata
+        val title = meta?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Unknown track"
+        val artist = meta?.getString(MediaMetadata.METADATA_KEY_ARTIST) ?: "Unknown artist"
+        val art = meta?.getBitmap(MediaMetadata.METADATA_KEY_ART) ?: meta?.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+        val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; if (art != null) setImageBitmap(art) }
+        content.addView(image, LinearLayout.LayoutParams(260, 200))
+        content.addView(text(title, 24f, Color.WHITE, true))
+        content.addView(text(artist, 17f, muted))
+        content.addView(action("Previous") { controller.transportControls.skipToPrevious(); musicPlayer() })
+        content.addView(action("Play / Pause") { if (controller.playbackState?.state == PlaybackState.STATE_PLAYING) controller.transportControls.pause() else controller.transportControls.play() })
+        content.addView(action("Next") { controller.transportControls.skipToNext(); musicPlayer() })
+        content.addView(text("UP NEXT", 14f, muted, true))
+        val queue = controller.queue ?: emptyList()
+        queue.take(8).forEach { item -> content.addView(text(item.description.title?.toString() ?: "Track", 15f, Color.WHITE)) }
+        if (queue.isEmpty()) content.addView(text("The music app does not share its queue.", 14f, muted))
+        content.addView(action("Back to Home") { show("Home") })
+    }
     private fun customIconSettings() {
         content.removeAllViews()
         heading("Custom app icons","Choose an image saved on your TV for any installed app")
