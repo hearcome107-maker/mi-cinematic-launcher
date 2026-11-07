@@ -110,9 +110,9 @@ class MainActivity : Activity() {
         }
         content.addView(row)
         content.addView(View(this),LinearLayout.LayoutParams(1,24))
-        val music=LinearLayout(this).apply { orientation=0; gravity=Gravity.CENTER_VERTICAL; setPadding(18,16,18,16); background=shape(panel) }
+        val music=LinearLayout(this).apply { orientation=0; gravity=Gravity.CENTER_VERTICAL; setPadding(18,16,18,16); background=shape(panel); isFocusable=true; isClickable=true; setOnClickListener { musicPlayer() } }
         music.addView(text("♫   MUSIC",18f,Color.WHITE,true),LinearLayout.LayoutParams(0,-2,1f))
-        music.addView(text("No active media session",14f,muted)); content.addView(music)
+        music.addView(text("Open full-screen player  ›",14f,muted)); content.addView(music)
     }
 
     private fun tile(name:String, glyph:String, run:()->Unit)=LinearLayout(this).apply {
