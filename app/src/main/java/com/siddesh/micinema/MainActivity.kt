@@ -347,8 +347,24 @@ class MainActivity : Activity() {
 
     private fun chooseAppIcon(pkg:String) {
         iconTargetPackage=pkg
-        val intent=Intent(Intent.ACTION_OPEN_DOCUMENT).apply { addCategory(Intent.CATEGORY_OPENABLE); type="image/*"; addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION) }
-        try { startActivityForResult(intent,411) } catch (_:Exception) { Toast.makeText(this,"No image picker is available on this TV.",Toast.LENGTH_LONG).show() }
+        val documentIntent=Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type="image/*"
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try {
+            startActivityForResult(documentIntent,411)
+        } catch (_:Exception) {
+            try {
+                val contentIntent=Intent(Intent.ACTION_GET_CONTENT).apply {
+                    type="image/*"
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivityForResult(Intent.createChooser(contentIntent,"Choose app icon"),411)
+            } catch (_:Exception) {
+                Toast.makeText(this,"This TV has no image picker. Use a TV file manager with image sharing, or add a built-in icon pack in a later update.",Toast.LENGTH_LONG).show()
+            }
+        }
     }
     private fun media(type:String) {
         heading(type,"Your $type library")
@@ -462,12 +478,17 @@ class MainActivity : Activity() {
             val uri=data?.data ?: return
             val pkg=iconTargetPackage ?: return
             try {
-                try { contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_:Exception) {}
-                prefs.edit().putString("icon_$pkg",uri.toString()).apply()
+                val savedFile = java.io.File(filesDir, "app-icon-" + pkg.replace(Regex("[^A-Za-z0-9_.-]"), "_") + ".img")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    openFileOutput(savedFile.name, MODE_PRIVATE).use { output -> input.copyTo(output) }
+                } ?: throw IllegalStateException("Image could not be opened")
+                prefs.edit().putString("icon_$pkg",Uri.fromFile(savedFile).toString()).apply()
                 iconTargetPackage=null
+                shell()
+                show("Settings")
                 customIconSettings()
                 Toast.makeText(this,"Custom app icon applied.",Toast.LENGTH_SHORT).show()
-            } catch (_:Exception) { Toast.makeText(this,"Could not apply that image. Try another file.",Toast.LENGTH_LONG).show() }
+            } catch (_:Exception) { Toast.makeText(this,"Could not save that image. Try a JPG or PNG file.",Toast.LENGTH_LONG).show() }
         }
     }
 
