@@ -96,8 +96,20 @@ class MainActivity : Activity() {
     }
 
     private fun home() {
-        content.addView(text(SimpleDateFormat("h:mm",Locale.getDefault()).format(Date()),72f))
-        content.addView(text(SimpleDateFormat("EEEE, d MMMM",Locale.getDefault()).format(Date()).uppercase(Locale.getDefault()),16f,muted))
+        val clockPill = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(28, 14, 28, 14)
+            background = GradientDrawable().apply {
+                setColor(Color.argb(178, 24, 29, 40))
+                cornerRadius = 42f
+                setStroke(1, Color.argb(115, 220, 228, 245))
+            }
+            elevation = 12f
+        }
+        clockPill.addView(text(SimpleDateFormat("h:mm a",Locale.getDefault()).format(Date()),38f,Color.WHITE,true))
+        clockPill.addView(text(SimpleDateFormat("EEEE, d MMMM",Locale.getDefault()).format(Date()).uppercase(Locale.getDefault()),13f,muted))
+        content.addView(clockPill, LinearLayout.LayoutParams(-2, -2))
         content.addView(View(this),LinearLayout.LayoutParams(1,25))
         content.addView(text("YOUR CINEMA. YOUR HOME.",18f,Color.WHITE,true))
         content.addView(text("Welcome back, $profile",15f,muted))
@@ -324,13 +336,21 @@ class MainActivity : Activity() {
 
     private fun settings() {
         heading("Settings","Personalise your cinema")
-        listOf("Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
+        listOf("Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Choose daily wallpaper collection" to { chooseWallpaperCollection() },"Automatic daily wallpaper: " + (if (prefs.getBoolean("auto_wallpaper", false)) "ON" else "OFF") to { val enabled = !prefs.getBoolean("auto_wallpaper", false); prefs.edit().putBoolean("auto_wallpaper", enabled).apply(); settings() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
             val b=action(item.first,item.second); val lp=LinearLayout.LayoutParams(-1,-2); lp.bottomMargin=9; content.addView(b,lp)
         }
     }
 
 
     private fun wallpaperBackground(): Drawable {
+        val collection = prefs.getString("wallpaper_list", null)
+        if (prefs.getBoolean("auto_wallpaper", false) && !collection.isNullOrBlank()) {
+            val items = collection.split("|").filter { it.isNotBlank() }
+            if (items.isNotEmpty()) {
+                val day = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
+                prefs.edit().putString("wallpaper_uri", items[day % items.size]).apply()
+            }
+        }
         val saved = prefs.getString("wallpaper_uri", null)
         if (saved != null) {
             try {
@@ -342,6 +362,17 @@ class MainActivity : Activity() {
             } catch (_: Exception) { prefs.edit().remove("wallpaper_uri").apply() }
         }
         return GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(bg,Color.rgb(20,27,43),Color.rgb(8,11,18)))
+    }
+
+    private fun chooseWallpaperCollection() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "image/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        try { startActivityForResult(intent, 412) }
+        catch (_: Exception) { Toast.makeText(this, "Image picker is not available on this TV.", Toast.LENGTH_LONG).show() }
     }
 
     private fun chooseWallpaper() {
@@ -383,6 +414,21 @@ class MainActivity : Activity() {
                 Toast.makeText(this, "Wallpaper applied.", Toast.LENGTH_SHORT).show()
             } catch (_: Exception) {
                 Toast.makeText(this, "Could not save this image. Try another image.", Toast.LENGTH_LONG).show()
+            }
+        }
+        if (requestCode == 412 && resultCode == RESULT_OK) {
+            val uris = mutableListOf<Uri>()
+            data?.clipData?.let { clip -> for (i in 0 until clip.itemCount) uris.add(clip.getItemAt(i).uri) }
+            if (uris.isEmpty()) data?.data?.let { uris.add(it) }
+            if (uris.isEmpty()) return
+            try {
+                uris.forEach { uri -> contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                prefs.edit().putString("wallpaper_list", uris.joinToString("|") { it.toString() }).putBoolean("auto_wallpaper", true).apply()
+                shell()
+                show("Home")
+                Toast.makeText(this, "Daily wallpaper collection saved.", Toast.LENGTH_SHORT).show()
+            } catch (_: Exception) {
+                Toast.makeText(this, "Could not save the collection. Try selecting fewer images.", Toast.LENGTH_LONG).show()
             }
         }
         if (requestCode == 411 && resultCode == RESULT_OK) {
