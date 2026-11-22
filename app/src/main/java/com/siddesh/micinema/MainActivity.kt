@@ -92,7 +92,10 @@ class MainActivity : Activity() {
     }
 
     private fun show(p:String) {
-        page=p; drawNav(); content.removeAllViews()
+        page=p
+        root.getChildAt(0)?.visibility = View.VISIBLE
+        nav.visibility = View.VISIBLE
+        drawNav(); content.removeAllViews()
         when(p) {
             "Home" -> home()
             "Apps" -> apps()
@@ -180,6 +183,9 @@ class MainActivity : Activity() {
 
 
     private fun musicPlayer() {
+        // Give the music experience the full TV canvas: hide launcher header and tabs.
+        root.getChildAt(0)?.visibility = View.GONE
+        nav.visibility = View.GONE
         content.removeAllViews()
         heading("Now Playing", "Your music • live queue")
         val manager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
