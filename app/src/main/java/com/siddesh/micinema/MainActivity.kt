@@ -2,6 +2,11 @@ package com.siddesh.micinema
 
 import android.app.Activity
 import android.app.AlertDialog
+import android.animation.ObjectAnimator
+import android.animation.ValueAnimator
+import android.app.Dialog
+import android.os.Handler
+import android.os.Looper
 import android.content.Intent
 import android.content.ComponentName
 import android.media.MediaMetadata
@@ -39,6 +44,10 @@ class MainActivity : Activity() {
     private var page = "Home"
     private var iconTargetPackage: String? = null
     private val tabs = listOf("Home", "YouTube", "Apps", "Settings")
+    private val idleHandler = Handler(Looper.getMainLooper())
+    private var screensaverDialog: Dialog? = null
+    private var screensaverAnimator: ObjectAnimator? = null
+    private val idleScreensaver = Runnable { showWallpaperScreensaver() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +56,7 @@ class MainActivity : Activity() {
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
         shell()
         show("Home")
+        resetIdleTimer()
     }
 
     private fun shape(c: Int) = GradientDrawable().apply { setColor(c); cornerRadius = 22f }
@@ -442,6 +452,76 @@ class MainActivity : Activity() {
                 Toast.makeText(this,"Custom app icon applied.",Toast.LENGTH_SHORT).show()
             } catch (_:Exception) { Toast.makeText(this,"Could not apply that image. Try another file.",Toast.LENGTH_LONG).show() }
         }
+    }
+
+
+    // After inactivity, show only the selected wallpaper. A very small, slow drift
+    // gives a restrained 2.5D depth impression without adding UI or clock overlays.
+    private fun resetIdleTimer() {
+        idleHandler.removeCallbacks(idleScreensaver)
+        if (screensaverDialog?.isShowing != true) {
+            idleHandler.postDelayed(idleScreensaver, 120_000L)
+        }
+    }
+
+    private fun showWallpaperScreensaver() {
+        val saved = prefs.getString("wallpaper_uri", null)
+        if (saved.isNullOrBlank() || isFinishing) return
+        try {
+            val image = ImageView(this).apply {
+                setImageURI(Uri.parse(saved))
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                contentDescription = "Current wallpaper screensaver"
+                setBackgroundColor(Color.BLACK)
+            }
+            val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+            dialog.setContentView(image)
+            dialog.setCancelable(true)
+            dialog.setOnDismissListener {
+                screensaverAnimator?.cancel()
+                screensaverAnimator = null
+                screensaverDialog = null
+                resetIdleTimer()
+            }
+            dialog.window?.apply {
+                setLayout(-1, -1)
+                decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or
+                    View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            screensaverDialog = dialog
+            dialog.show()
+            dialog.window?.setLayout(-1, -1)
+            screensaverAnimator = ObjectAnimator.ofFloat(image, View.TRANSLATION_X, -8f, 8f).apply {
+                duration = 18_000L
+                repeatMode = ValueAnimator.REVERSE
+                repeatCount = ValueAnimator.INFINITE
+                start()
+            }
+            image.animate().scaleX(1.035f).scaleY(1.035f).setDuration(18_000L).start()
+        } catch (_: Exception) {
+            screensaverDialog?.dismiss()
+            screensaverDialog = null
+        }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            if (screensaverDialog?.isShowing == true) {
+                screensaverDialog?.dismiss()
+                resetIdleTimer()
+                return true
+            }
+            resetIdleTimer()
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onDestroy() {
+        idleHandler.removeCallbacks(idleScreensaver)
+        screensaverAnimator?.cancel()
+        screensaverDialog?.dismiss()
+        super.onDestroy()
     }
 
     private fun profiles() {
