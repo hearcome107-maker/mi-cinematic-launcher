@@ -121,7 +121,6 @@ class MainActivity : Activity() {
             elevation = 12f
         }
         clockPill.addView(text(SimpleDateFormat("h:mm a",Locale.getDefault()).format(Date()),38f,Color.WHITE,true))
-        clockPill.addView(text(SimpleDateFormat("EEEE, d MMMM",Locale.getDefault()).format(Date()).uppercase(Locale.getDefault()),13f,muted))
         content.addView(clockPill, LinearLayout.LayoutParams(-2, -2))
         content.addView(View(this),LinearLayout.LayoutParams(1,25))
         content.addView(text("YOUR CINEMA. YOUR HOME.",18f,Color.WHITE,true))
