@@ -183,6 +183,7 @@ class MainActivity : Activity() {
 
 
     private fun musicPlayer() {
+        page = "Music"
         // Give the music experience the full TV canvas: hide launcher header and tabs.
         root.getChildAt(0)?.visibility = View.GONE
         nav.visibility = View.GONE
@@ -191,8 +192,18 @@ class MainActivity : Activity() {
         val manager = getSystemService(MEDIA_SESSION_SERVICE) as MediaSessionManager
         val controller = try { manager.getActiveSessions(ComponentName(this, MusicAccessService::class.java)).firstOrNull() } catch (e: Exception) { null }
         if (controller == null) {
-            content.addView(text("Allow Mi Cinematic Launcher to read music notifications to show the song, album art and queue.", 17f, muted))
-            content.addView(action("Enable music access") { startActivity(Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")) })
+            val listenerEnabled = Settings.Secure.getString(contentResolver, "enabled_notification_listeners")
+                ?.contains(ComponentName(this, MusicAccessService::class.java).flattenToString()) == true
+            if (!listenerEnabled) {
+                content.addView(text("Allow music access once so the launcher can read the active song, album art and playback controls.", 17f, muted))
+                content.addView(action("Open music access settings") {
+                    try { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
+                    catch (_: Exception) { Toast.makeText(this, "Open Android Settings → Apps → Special app access → Notification access.", Toast.LENGTH_LONG).show() }
+                })
+            } else {
+                content.addView(text("Music access is enabled. Start playing a song in your music app, then return here. The player appears when that app publishes an active media session.", 17f, muted))
+                content.addView(action("Refresh player") { musicPlayer() })
+            }
             content.addView(action("Back to Home") { show("Home") })
             return
         }
@@ -352,7 +363,7 @@ class MainActivity : Activity() {
 
     private fun settings() {
         heading("Settings","Personalise your cinema")
-        listOf("Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"Bluetooth settings" to { open(Settings.ACTION_BLUETOOTH_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Choose daily wallpaper collection" to { chooseWallpaperCollection() },"Automatic daily wallpaper: " + (if (prefs.getBoolean("auto_wallpaper", false)) "ON" else "OFF") to { val enabled = !prefs.getBoolean("auto_wallpaper", false); prefs.edit().putBoolean("auto_wallpaper", enabled).apply(); settings() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
+        listOf("Profiles" to { profiles() },"Customize app icons" to { customIconSettings() },"Wi-Fi settings" to { open(Settings.ACTION_WIFI_SETTINGS) },"System settings" to { systemSettings() },"Choose wallpaper" to { chooseWallpaper() },"Choose daily wallpaper collection" to { chooseWallpaperCollection() },"Automatic daily wallpaper: " + (if (prefs.getBoolean("auto_wallpaper", false)) "ON" else "OFF") to { val enabled = !prefs.getBoolean("auto_wallpaper", false); prefs.edit().putBoolean("auto_wallpaper", enabled).apply(); settings() },"Preview current wallpaper" to { previewWallpaper() },"Remove custom wallpaper" to { prefs.edit().remove("wallpaper_uri").apply(); shell(); show("Settings") },"Reset preferences" to { prefs.edit().clear().apply(); profile="Siddesh"; shell(); show("Home") }).forEach { item ->
             val b=action(item.first,item.second); val lp=LinearLayout.LayoutParams(-1,-2); lp.bottomMargin=9; content.addView(b,lp)
         }
     }
@@ -521,6 +532,11 @@ class MainActivity : Activity() {
             resetIdleTimer()
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (page == "Music") musicPlayer()
     }
 
     override fun onDestroy() {
